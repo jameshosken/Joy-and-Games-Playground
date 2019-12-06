@@ -279,7 +279,17 @@ ModelImporter:
   - first:
       74: 6815623497212922054
     second: pole|sciencestation.obj|AnimStack|Base Layer
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Ground
+    second: {fileID: 2100000, guid: 084d412dd62955140810cb14b7cedbd7, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Texture_0
+    second: {fileID: 2100000, guid: 55e78fb5091063c4a8006ecedd685699, type: 2}
   materials:
     importMaterials: 1
     materialName: 0
