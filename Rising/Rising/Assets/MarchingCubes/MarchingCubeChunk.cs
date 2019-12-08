@@ -100,7 +100,7 @@ public class MarchingCubeChunk : MonoBehaviour
 
     public void UpdateMesh(float threshold)
     {
-        MarchingCubes.ConstructMeshFromVoxelMap(mesh, mapChunk, threshold, LOD, worldPosition);
+        //MarchingCubes.ConstructVerticesFromVoxelMap(mesh, mapChunk, threshold, LOD, worldPosition);
         meshFilter.sharedMesh = mesh;
         meshCollider.sharedMesh = meshFilter.sharedMesh;
 

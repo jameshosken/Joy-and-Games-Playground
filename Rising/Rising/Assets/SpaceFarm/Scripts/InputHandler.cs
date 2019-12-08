@@ -8,6 +8,7 @@ public class InputHandler : MonoBehaviour
 {
     [SerializeField] CameraLookController cameraController;
     [SerializeField] ShipControlsHandler shipControls;
+    [SerializeField] WeaponHandler weapons;
 
     //[SerializeField] Transform rightHandController;
     [SerializeField] Transform controllerSpaceReference;
@@ -19,6 +20,8 @@ public class InputHandler : MonoBehaviour
     [SerializeField] float accelMultiplier = .1f;
 
     [SerializeField] bool isVR = false;
+
+
 
     bool isCameraLocked;
 
@@ -71,6 +74,16 @@ public class InputHandler : MonoBehaviour
 
             cameraController.RotateCamera(new Vector3(x, y, 0));
 
+        }
+
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            weapons.isFiring = true;
+        }
+
+        if (Input.GetKeyUp(KeyCode.Space))
+        {
+            weapons.isFiring = false;
         }
 
 

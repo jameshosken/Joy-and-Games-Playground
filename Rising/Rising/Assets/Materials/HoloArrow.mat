@@ -7,7 +7,7 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: HoloGreen
+  m_Name: HoloArrow
   m_Shader: {fileID: -6465566751694194690, guid: 069bcbd163030c549aef4ef037f260f6,
     type: 3}
   m_ShaderKeywords: 
@@ -49,7 +49,8 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     m_Floats:
-    - Vector1_2FE1C9BD: 1
+    - Vector1_2F5B4EFD: 3
+    - Vector1_2FE1C9BD: 0.1
     - _AlphaClip: 0
     - _Blend: 0
     - _BumpScale: 1
@@ -72,7 +73,8 @@ Material:
     - _WorkflowMode: 1
     - _ZWrite: 1
     m_Colors:
-    - Color_FD3CE07E: {r: 0, g: 1, b: 0.073209524, a: 0}
+    - Color_FD3CE07E: {r: 23.968628, g: 12.388762, b: 0, a: 0}
+    - Vector3_E7576A1A: {r: 0, g: 0.5, b: 0, a: 0}
     - _BaseColor: {r: 0.8, g: 0.8, b: 0.8, a: 1}
     - _Color: {r: 0.8, g: 0.8, b: 0.8, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 0}

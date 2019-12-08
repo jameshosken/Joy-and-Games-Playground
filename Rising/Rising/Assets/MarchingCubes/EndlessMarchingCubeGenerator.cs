@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
 using System;
+using System.Threading;
 
 public class EndlessMarchingCubeGenerator : MonoBehaviour
 {
@@ -18,25 +19,14 @@ public class EndlessMarchingCubeGenerator : MonoBehaviour
     [SerializeField] float scale = 1f;
     [SerializeField] private float threshold;
     [SerializeField] private float noiseScale = 0.9f;
-    [SerializeField] private float timeDelay = 0.05f;
-
-    //[Space()]
-    //[Header("Brush")]
-    //[SerializeField] private float brushRadius = 3f;
-    //[SerializeField] private float brushIncrement = 0.01f;
-    //[SerializeField] private GameObject addBrush;
-    //[SerializeField] private GameObject removeBrush;
-
-    [Space()]
-    [Header("Geometry and Materials")]
-    [SerializeField] private Color zeroColour;
-    [SerializeField] private Color fullColour;
 
     [Space()]
     [Header("Player")]
-    [SerializeField] int chunksGeneratedPerFrame = 10;
     [SerializeField] private Transform player;
-    [SerializeField] float preloadRadius;
+
+    [Space()]
+    [Header("Generators")]
+    [SerializeField] float chunksPerFrame = 5;
     [SerializeField] private float radius = 3;
     [SerializeField] private float turnOffRadius = 5;
     [SerializeField] private float checkMoveThreshold = 3f;
@@ -47,103 +37,27 @@ public class EndlessMarchingCubeGenerator : MonoBehaviour
     private Camera cam;
     private Vector3 prevPlayerPos;
 
-    //Store map data with coordinates
-    private Dictionary<int[], float[,,]> endlessMapDataChunksDictionary = new Dictionary<int[], float[,,]>(new MyEqualityComparer());
-
     //Store marching cube scripts with coordinates
     private Dictionary<int[], EndlessMarchingCubeChunk> endlessMarchingCubeChunksDictionary = new Dictionary<int[], EndlessMarchingCubeChunk>(new MyEqualityComparer());
 
-
+    //Store random order list to activate chunks
     List<int[]> coords = new List<int[]>();
+
+
     private void Start()
     {
-        float startTime = Time.realtimeSinceStartup;
         cam = Camera.main;
-
-        Debug.Log("Scene generated in: " + (Time.realtimeSinceStartup - startTime).ToString() + " seconds");
 
         prevPlayerPos = -player.position;
 
-
-        SetupChunkDictionary();
-        StartCoroutine(GenerateMapChunksInLargeRadius());
+        generateRandomCoordOrder();
 
         if (generateOnAwake)
         {
-            StartCoroutine(ActivateMapChunksAroundPlayer());
+            StartCoroutine( ActivateMapChunksAroundPlayer() );
         }
 
-
-        generateRandomCoordOrder();
         
-
-    }
-
-    private IEnumerator SetupChunkDictionary()
-    {
-        Vector3 playerPos = player.position;
-        int[] playerCoords = GetGridCoordFromWorldPosition(playerPos);
-
-        int search = 30;
-
-        int c = 0;
-        List<int[]> coords = new List<int[]>();
-        for (int x = -search; x < search; x++)
-        {
-            for (int y = -search; y < search; y++)
-            {
-                for (int z = -search; z < search; z++)
-                {
-                    coords.Add(new int[] { x, y, z });
-                }
-            }
-        }
-
-        //coords = coords.OrderBy(x => UnityEngine.Random.value).ToList();
-
-        for (int i = 0; i < coords.Count; i++)
-        {
-            int x = coords[i][0];
-            int y = coords[i][1];
-            int z = coords[i][2];
-
-            Debug.Log(x.ToString() + ", " + y.ToString() + ", " + z.ToString());
-            c++;
-
-            if (c % chunksGeneratedPerFrame == 0)
-            {
-                yield return null;
-            }
-
-            int[] offsetCoord = {
-                            playerCoords[0] + x,
-                            playerCoords[1] + y,
-                            playerCoords[2] + z
-                        };
-
-
-                float[,,] mapDataChunk = GenerateMapDataChunk(offsetCoord);
-                endlessMapDataChunksDictionary.Add(offsetCoord, mapDataChunk);
-            
-        }
-
-        yield return null;
-    }
-
-    private void generateRandomCoordOrder()
-    {
-        for (int x = -(int)radius; x < radius; x++)
-        {
-            for (int y = -(int)radius; y < radius; y++)
-            {
-                for (int z = -(int)radius; z < radius; z++)
-                {
-                    coords.Add(new int[] { x, y, z });
-                }
-            }
-        }
-
-        coords = coords.OrderBy(x => UnityEngine.Random.value).ToList();
     }
 
     private void Update()
@@ -151,14 +65,111 @@ public class EndlessMarchingCubeGenerator : MonoBehaviour
 
         if (Vector3.Distance(prevPlayerPos, player.position) > checkMoveThreshold)
         {
-            StopCoroutine(ActivateMapChunksAroundPlayer());
-            StartCoroutine(ActivateMapChunksAroundPlayer());
 
+            float startTime = Time.realtimeSinceStartup;
+            //Debug.Log("Frame Start: " + startTime);
+            StopCoroutine(ActivateMapChunksAroundPlayer());
+            StartCoroutine( ActivateMapChunksAroundPlayer() );
             prevPlayerPos = player.position;
+
+        }
+
+        //Remove out of range every 5 seconds or so:
+        if (Time.frameCount % 300 == 0)
+        {
+            StartCoroutine(TurnOffChunksAroundPlayer());
         }
 
     }
 
+    IEnumerator ActivateMapChunksAroundPlayer()
+    {
+        Vector3 playerPos = player.position;
+        int[] playerCoords = GetGridCoordFromWorldPosition(playerPos);
+
+        int search = (int)radius;
+
+        int c = 0;
+
+        //Loop through randomised list of grid coordinates
+        for (int i = 0; i < coords.Count; i++)
+        {
+            int x = coords[i][0];
+            int y = coords[i][1];
+            int z = coords[i][2];
+
+            // Check distance from grid chunk to player
+            if (Vector3.Distance(
+                new Vector3(x + playerCoords[0], y + playerCoords[1], z + playerCoords[2]),
+                new Vector3(playerCoords[0], playerCoords[1], playerCoords[2]))
+                < radius)
+            {
+
+                //Evaluade coordinate of grid chunk:
+                int[] offsetCoord = {
+                            playerCoords[0] + x,
+                            playerCoords[1] + y,
+                            playerCoords[2] + z
+                        };
+
+                //If data exists there,
+                if (ChunkDataExists(endlessMarchingCubeChunksDictionary, offsetCoord))
+                {
+                    if (IsOutOfRange(endlessMarchingCubeChunksDictionary[offsetCoord].transform.position))
+                    {
+                        endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(false);
+                    }
+                    else
+                    {
+                        endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(true);
+                    }
+                }
+                //Otherwise generate new chunk:
+                else
+                {
+                    //Flag which chunks to generate:
+                    GenerateMarchingCubeChunk(offsetCoord);
+                    
+                    if (IsOutOfRange(endlessMarchingCubeChunksDictionary[offsetCoord].transform.position))
+                    {
+                        endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(false);
+                    }
+
+                    c++;
+                    if(c % chunksPerFrame == 0)
+                    {
+                        yield return null;
+                    }
+                }
+            }
+        }
+
+    }
+
+
+
+    private void GenerateMarchingCubeChunk(int[] offset)
+    {
+        //Generate empty objects:
+        GameObject chunk = Instantiate(chunkTemplate) as GameObject;
+        chunk.transform.parent = transform;
+        chunk.transform.localScale = Vector3.one * scale;
+        EndlessMarchingCubeChunk chunkHandler = chunk.GetComponent<EndlessMarchingCubeChunk>();
+
+        //First, flag that this data now exists:
+        endlessMarchingCubeChunksDictionary.Add(offset, chunkHandler);
+
+        // MUST GENERATE MAP DATA HERE TOO
+
+        chunkHandler.SetChunkData(offset, mapDataChunkSize, scale, noiseScale, threshold);
+
+        chunkHandler.Generate();
+
+    }
+
+
+    ////////////
+    ////////////
 
     bool IsOutOfRange(Vector3 pos)
     {
@@ -168,8 +179,11 @@ public class EndlessMarchingCubeGenerator : MonoBehaviour
         }
         return false;
     }
-    private void TurnOffChunksAroundPlayer()
+
+    IEnumerator TurnOffChunksAroundPlayer()
     {
+
+        int c = 0;
         List<KeyValuePair<int[], EndlessMarchingCubeChunk>> chunksToRemove = new List<KeyValuePair<int[], EndlessMarchingCubeChunk>>();
 
         foreach (KeyValuePair<int[], EndlessMarchingCubeChunk> chunk in endlessMarchingCubeChunksDictionary)
@@ -184,9 +198,13 @@ public class EndlessMarchingCubeGenerator : MonoBehaviour
             {
                 //print("Removing");
                 chunksToRemove.Add(chunk);
-
             }
-
+            c++;
+            if(c % chunksPerFrame == 0)
+            {
+                yield return null;
+            }
+            
         }
 
         for (int i = 0; i < chunksToRemove.Count; i++)
@@ -195,346 +213,11 @@ public class EndlessMarchingCubeGenerator : MonoBehaviour
         }
     }
 
-    IEnumerator GenerateMapChunksInLargeRadius()
-    {
-        Vector3 playerPos = player.position;
-        int[] playerCoords = GetGridCoordFromWorldPosition(playerPos);
-
-        int search = (int)preloadRadius;
-
-        int c = 0;
-        List<int[]> coords = new List<int[]>();
-        for (int x = -search; x < search; x++)
-        {
-            for (int y = -search; y < search; y++)
-            {
-                for (int z = -search; z < search; z++)
-                {
-                    coords.Add(new int[] { x, y, z });
-                }
-            }
-        }
-
-        //coords = coords.OrderBy(x => UnityEngine.Random.value).ToList();
-
-        for (int i = 0; i < coords.Count; i++)
-        {
-            int x = coords[i][0];
-            int y = coords[i][1];
-            int z = coords[i][2];
-
-            Debug.Log(x.ToString() + ", " + y.ToString() + ", " + z.ToString());
-            c++;
-
-            if (c % chunksGeneratedPerFrame == 0)
-            {
-                yield return null;
-            }
-
-            int[] offsetCoord = {
-                            playerCoords[0] + x,
-                            playerCoords[1] + y,
-                            playerCoords[2] + z
-                        };
-
-            //If data exists there,
-            if (MapDataExists(endlessMapDataChunksDictionary, offsetCoord))
-            {
-                endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(true);
-            }
-            //Otherwise create more data!
-            else
-            {
-                float[,,] mapDataChunk = GenerateMapDataChunk(offsetCoord);
-                endlessMapDataChunksDictionary.Add(offsetCoord, mapDataChunk);
-                GenerateMarchingCubeChunk(mapDataChunk, offsetCoord);
-                if (IsOutOfRange(endlessMarchingCubeChunksDictionary[offsetCoord].transform.position))
-                {
-                    endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(false);
-                }
-            }
-        }
-        yield return null;
-    }
-
-    IEnumerator ActivateMapChunksAroundPlayer()
-    {
-
-        Vector3 playerPos = player.position;
-        int[] playerCoords = GetGridCoordFromWorldPosition(playerPos);
-
-        int search = (int)radius;
-
-        int c = 0;
-
-        for (int i = 0; i < coords.Count; i++)
-        {
-            int x = coords[i][0];
-            int y = coords[i][1];
-            int z = coords[i][2];
-
-
-            //TODO check this? 
-            if (Vector3.Distance(
-                new Vector3(x + playerCoords[0], y + playerCoords[1], z + playerCoords[2]),
-                new Vector3(playerCoords[0], playerCoords[1], playerCoords[2]))
-                < radius)
-            {
-
-
-                int[] offsetCoord = {
-                            playerCoords[0] + x,
-                            playerCoords[1] + y,
-                            playerCoords[2] + z
-                        };
-
-                //If data exists there,
-                if (MapDataExists(endlessMapDataChunksDictionary, offsetCoord))
-                {
-                    //If there's already a chunk there (i.e. has not been deleted:
-                    if (ChunkDataExists(endlessMarchingCubeChunksDictionary, offsetCoord))
-                    {
-                        if (IsOutOfRange(endlessMarchingCubeChunksDictionary[offsetCoord].transform.position))
-                        {
-                            endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(false);
-                        }
-                        else
-                        {
-                            endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(true);
-                        }
-                    }
-                    else
-                    {
-                        GenerateMarchingCubeChunk(endlessMapDataChunksDictionary[offsetCoord], offsetCoord);
-
-                        if (IsOutOfRange(endlessMarchingCubeChunksDictionary[offsetCoord].transform.position))
-                        {
-                            endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(false);
-                        }
-                    }
-                }
-                //Otherwise create more data and a chunk!
-                else
-                {
-                    float[,,] mapDataChunk = GenerateMapDataChunk(offsetCoord);
-                    endlessMapDataChunksDictionary.Add(offsetCoord, mapDataChunk);
-                    GenerateMarchingCubeChunk(mapDataChunk, offsetCoord);
-
-                    if (IsOutOfRange(endlessMarchingCubeChunksDictionary[offsetCoord].transform.position))
-                    {
-                        endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(false);
-                    }
-
-                    c++;
-                    if (c % chunksGeneratedPerFrame == 0)
-                    {
-                        yield return null;
-                    }
-                }
-            }
-
-        }
-
-        TurnOffChunksAroundPlayer();
-        yield return null;
-    }
-
-
-
-    private float[,,] GenerateMapDataChunk(int[] offsetCoord)
-    {
-
-        float[,,] mapDataChunk = new float[mapDataChunkSize + 1, mapDataChunkSize + 1, mapDataChunkSize + 1];
-
-        //Unlike non-endless generators, we can't use dynamic max and min vals to normalise so we have to estimate them. 
-        float maxVal = 1;
-        float minVal = 0;
-
-        for (int x = 0; x < mapDataChunkSize + 1; x++)
-        {
-            for (int y = 0; y < mapDataChunkSize + 1; y++)
-            {
-                for (int z = 0; z < mapDataChunkSize + 1; z++)
-                {
-
-                    //add offsets to coords
-                    float xOff = x + offsetCoord[0] * mapDataChunkSize;
-                    float yOff = y + offsetCoord[1] * mapDataChunkSize;
-                    float zOff = z + offsetCoord[2] * mapDataChunkSize;
-
-                    //Generate noise based on offset
-
-                    //float point = 0;
-
-                    //float lacunarity = 1.6f;
-                    //float persistence = 0.8f;
-                    //float amp = 1;
-                    //float scl = 1;
-
-                    //yOff here creates gradient of noise
-                    mapDataChunk[x, y, z] = PerlinNoise3D.Perlin3D(xOff * noiseScale + 10, yOff * noiseScale + 100, zOff * noiseScale) - yOff * 0.001f;
-
-                    //mapDataChunk[x, y, z] = PerlinNoise3D.Perlin3D(xOff * noiseScale + 10, yOff * noiseScale + 100, zOff * noiseScale);
-                }
-            }
-        }
-
-        for (int x = 0; x < mapDataChunkSize + 1; x++)
-        {
-            for (int y = 0; y < mapDataChunkSize + 1; y++)
-            {
-                for (int z = 0; z < mapDataChunkSize + 1; z++)
-                {
-                    mapDataChunk[x, y, z] = Map(mapDataChunk[x, y, z], minVal, maxVal, 0f, 1f);
-                }
-            }
-        }
-
-        return mapDataChunk;
-    }
-
-    private void GenerateMarchingCubeChunk(float[,,] mapDataChunk, int[] offset)
-    {
-
-        GameObject chunk = Instantiate(chunkTemplate) as GameObject;
-        chunk.transform.parent = transform;
-        chunk.transform.localScale = Vector3.one * scale;
-
-        EndlessMarchingCubeChunk chunkHandler = chunk.GetComponent<EndlessMarchingCubeChunk>();
-        chunkHandler.SetChunkData();
-
-        Vector3 offsetPosition = new Vector3(offset[0] * mapDataChunkSize, offset[1] * mapDataChunkSize, offset[2] * mapDataChunkSize) * scale;
-        chunkHandler.AddMapChunk(offsetPosition, mapDataChunkSize);
-
-
-        chunkHandler.UpdateMesh(mapDataChunk, threshold);
-
-        //Add this chunk to the dictionary
-        endlessMarchingCubeChunksDictionary.Add(offset, chunkHandler);
-    }
-
-
-
-
-    //private void HandleMousePress(int amount)
-    //{
-    //    Ray ray = cam.ScreenPointToRay(Input.mousePosition);
-    //    RaycastHit hit;
-
-    //    if (Physics.Raycast(ray, out hit))
-    //    {
-    //        removeBrush.transform.position = hit.point;
-    //        addBrush.transform.position = hit.point;
-
-    //        IncreaseDensityAroundPoint(hit.point, amount);
-    //    }
-    //}
-
-    //private void IncreaseDensityAroundPoint(Vector3 point, int amount)
-    //{
-
-    //    List<int[]> chunksModified = new List<int[]>();
-    //    int[] worldCoord = GetGridCoordFromWorldPosition(point);
-
-    //    for (int x = (int)-brushRadius + (int)point.x; x <= brushRadius + (int)point.x; x++)
-    //    {
-    //        for (int y = (int)-brushRadius + (int)point.y; y <= brushRadius + (int)point.y; y++)
-    //        {
-    //            for (int z = (int)-brushRadius + (int)point.z; z <= (int)brushRadius + (int)point.z; z++)
-    //            {
-
-
-    //                //Make a sphere
-    //                if (Vector3.Distance(new Vector3(x, y, z), point) < brushRadius)
-    //                {
-    //                    // No longler checking bounds here. Could cause issues with index out of bounds,
-    //                    // but hopefully the buffer zone is big enough to avoid checking at edges
-
-    //                    //Here we find the world position of the corner of this cube
-    //                    int[] chunkOrigin =
-    //                    {
-    //                        worldCoord[0] * mapDataChunkSize,
-    //                        worldCoord[1] * mapDataChunkSize,
-    //                        worldCoord[2] * mapDataChunkSize
-    //                    };
-
-    //                    //Determine where brush overlaps with neighbours
-    //                    bool[] overlaps =
-    //                    {
-    //                        x < chunkOrigin[0],
-    //                        y < chunkOrigin[1],
-    //                        z < chunkOrigin[2],
-    //                        x >= chunkOrigin[0] + mapDataChunkSize,
-    //                        y >= chunkOrigin[1] + mapDataChunkSize,
-    //                        z >= chunkOrigin[2] + mapDataChunkSize
-    //                    };
-
-    //                    //Offset chunks if brush overlaps
-    //                    int[] offsets = { 0, 0, 0 };
-
-    //                    if (overlaps[0]) offsets[0] = -1;
-    //                    if (overlaps[1]) offsets[1] = -1;
-    //                    if (overlaps[2]) offsets[2] = -1;
-    //                    if (overlaps[3]) offsets[0] = 1;
-    //                    if (overlaps[4]) offsets[1] = 1;
-    //                    if (overlaps[5]) offsets[2] = 1;
-
-    //                    int[] chunkCoord = { x + offsets[0], y + offsets[1], z + offsets[2] };
-
-    //                    if (endlessMapDataChunksDictionary.ContainsKey(chunkCoord))
-    //                    {
-    //                        if (!chunksModified.Contains(chunkCoord))
-    //                        {
-    //                            chunksModified.Add(chunkCoord);
-    //                        }
-
-    //                        // Normalise since all chunks start at 0,0,0
-    //                        int[] pointToModify =
-    //                        {
-
-    //                            x % mapDataChunkSize,
-    //                            y % mapDataChunkSize,
-    //                            z % mapDataChunkSize
-    //                        };
-
-    //                        endlessMapDataChunksDictionary[chunkCoord][pointToModify[0], pointToModify[1], pointToModify[2]] += brushIncrement * Time.deltaTime * amount;
-    //                    }
-
-
-    //                }
-    //            }
-    //        }
-    //    }
-    //    for (int i = 0; i < chunksModified.Count; i++)
-    //    {
-    //        int[] coordKey = chunksModified[i];
-
-    //        //Check if chunk exists at location
-    //        if (endlessMarchingCubeChunksDictionary.ContainsKey(coordKey))
-    //        {
-    //            //If so, update with new data.
-    //            endlessMarchingCubeChunksDictionary[coordKey].UpdateMesh(endlessMapDataChunksDictionary[coordKey], threshold);
-
-    //        }
-
-    //    }
-
-    //}
 
     /// <summary>
     /// Helper Functions
     /// </summary>
     /// 
-    public float Map(float val, float OldMin, float OldMax, float NewMin, float NewMax)
-    {
-
-        float OldRange = (OldMax - OldMin);
-        float NewRange = (NewMax - NewMin);
-        float NewValue = (((val - OldMin) * NewRange) / OldRange) + NewMin;
-
-        return (NewValue);
-    }
-
     private int[] GetGridCoordFromWorldPosition(Vector3 position)
     {
         int[] coord = new int[3];
@@ -562,20 +245,7 @@ public class EndlessMarchingCubeGenerator : MonoBehaviour
         }
         return false;
     }
-    private bool MapDataExists(Dictionary<int[], float[,,]> dict, int[] offsetCoord)
-    {
-        MyEqualityComparer eq = new MyEqualityComparer();
-        foreach (KeyValuePair<int[], float[,,]> chunk in dict)
-        {
 
-            if (eq.Equals(chunk.Key, offsetCoord))
-            {
-                return true;
-            }
-
-        }
-        return false;
-    }
 
     private bool ChunkContainsKeyArray(Dictionary<int[], EndlessMarchingCubeChunk> dict, int[] offsetCoord)
     {
@@ -589,6 +259,23 @@ public class EndlessMarchingCubeGenerator : MonoBehaviour
 
         }
         return false;
+    }
+
+
+    private void generateRandomCoordOrder()
+    {
+        for (int x = -(int)radius; x < radius; x++)
+        {
+            for (int y = -(int)radius; y < radius; y++)
+            {
+                for (int z = -(int)radius; z < radius; z++)
+                {
+                    coords.Add(new int[] { x, y, z });
+                }
+            }
+        }
+
+        coords = coords.OrderBy(x => UnityEngine.Random.value).ToList();
     }
 
 }
@@ -626,3 +313,227 @@ public class MyEqualityComparer : IEqualityComparer<int[]>
         return result;
     }
 }
+
+//ARCHIVE
+
+
+/*
+IEnumerator GenerateMapChunksInLargeRadius()
+{
+    Vector3 playerPos = player.position;
+    int[] playerCoords = GetGridCoordFromWorldPosition(playerPos);
+
+    int search = (int)preloadRadius;
+
+    int c = 0;
+    List<int[]> coords = new List<int[]>();
+    for (int x = -search; x < search; x++)
+    {
+        for (int y = -search; y < search; y++)
+        {
+            for (int z = -search; z < search; z++)
+            {
+                coords.Add(new int[] { x, y, z });
+            }
+        }
+    }
+
+    //coords = coords.OrderBy(x => UnityEngine.Random.value).ToList();
+
+    for (int i = 0; i < coords.Count; i++)
+    {
+        int x = coords[i][0];
+        int y = coords[i][1];
+        int z = coords[i][2];
+
+        Debug.Log(x.ToString() + ", " + y.ToString() + ", " + z.ToString());
+        c++;
+
+        if (c % chunksGeneratedPerFrame == 0)
+        {
+            yield return null;
+        }
+
+        int[] offsetCoord = {
+                        playerCoords[0] + x,
+                        playerCoords[1] + y,
+                        playerCoords[2] + z
+                    };
+
+        //If data exists there,
+        if (MapDataExists(endlessMapDataChunksDictionary, offsetCoord))
+        {
+            endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(true);
+        }
+        //Otherwise create more data!
+        else
+        {
+            float[,,] mapDataChunk = GenerateMapDataChunk(offsetCoord);
+            endlessMapDataChunksDictionary.Add(offsetCoord, mapDataChunk);
+            GenerateMarchingCubeChunk(mapDataChunk, offsetCoord);
+            if (IsOutOfRange(endlessMarchingCubeChunksDictionary[offsetCoord].transform.position))
+            {
+                endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(false);
+            }
+        }
+    }
+    yield return null;
+}
+*/
+
+/*
+private IEnumerator SetupChunkDictionary()
+{
+    Vector3 playerPos = player.position;
+    int[] playerCoords = GetGridCoordFromWorldPosition(playerPos);
+
+    int search = 30;
+
+    int c = 0;
+    List<int[]> coords = new List<int[]>();
+    for (int x = -search; x < search; x++)
+    {
+        for (int y = -search; y < search; y++)
+        {
+            for (int z = -search; z < search; z++)
+            {
+                coords.Add(new int[] { x, y, z });
+            }
+        }
+    }
+
+    //coords = coords.OrderBy(x => UnityEngine.Random.value).ToList();
+
+    for (int i = 0; i < coords.Count; i++)
+    {
+        int x = coords[i][0];
+        int y = coords[i][1];
+        int z = coords[i][2];
+
+        Debug.Log(x.ToString() + ", " + y.ToString() + ", " + z.ToString());
+        c++;
+
+        if (c % chunksGeneratedPerFrame == 0)
+        {
+            yield return null;
+        }
+
+        int[] offsetCoord = {
+                        playerCoords[0] + x,
+                        playerCoords[1] + y,
+                        playerCoords[2] + z
+                    };
+
+
+        float[,,] mapDataChunk = GenerateMapDataChunk(offsetCoord);
+        endlessMapDataChunksDictionary.Add(offsetCoord, mapDataChunk);
+
+    }
+
+    yield return null;
+}
+*/
+
+
+////PREV CREATOR:
+/*
+IEnumerator ActivateMapChunksAroundPlayer()
+    {
+
+        Vector3 playerPos = player.position;
+int[] playerCoords = GetGridCoordFromWorldPosition(playerPos);
+
+int search = (int)radius;
+
+int c = 0;
+
+        //Loop through randomised list of grid coordinates
+        for (int i = 0; i<coords.Count; i++)
+        {
+            int x = coords[i][0];
+int y = coords[i][1];
+int z = coords[i][2];
+
+            // Check distance from grid chunk to player
+            if (Vector3.Distance(
+                new Vector3(x + playerCoords[0], y + playerCoords[1], z + playerCoords[2]),
+                new Vector3(playerCoords[0], playerCoords[1], playerCoords[2]))
+                < radius)
+            {
+
+                int[] offsetCoord = {
+                    playerCoords[0] + x,
+                    playerCoords[1] + y,
+                    playerCoords[2] + z
+                };
+
+                /// New Algo:
+                /// Each chunk stores its own data. 
+                /// Create data and mesh together.
+                /// Only check against data
+
+                //If data exists there,
+                if (MapDataExists(endlessMapDataChunksDictionary, offsetCoord))
+                {
+                    //If there's already a chunk there (i.e. has not been deleted:
+                    if (ChunkDataExists(endlessMarchingCubeChunksDictionary, offsetCoord))
+                    {
+                        if (IsOutOfRange(endlessMarchingCubeChunksDictionary[offsetCoord].transform.position))
+                        {
+                            endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(false);
+                        }
+                        else
+                        {
+                            endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(true);
+                        }
+                    }
+                    else
+                    {
+                        GenerateMarchingCubeChunk(endlessMapDataChunksDictionary[offsetCoord], offsetCoord);
+
+                        if (IsOutOfRange(endlessMarchingCubeChunksDictionary[offsetCoord].transform.position))
+                        {
+                            endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(false);
+                        }
+                    }
+                }
+                //Otherwise create more data and a chunk!
+                else
+                {
+                    float[,,] mapDataChunk = GenerateMapDataChunk(offsetCoord);
+endlessMapDataChunksDictionary.Add(offsetCoord, mapDataChunk);
+                    GenerateMarchingCubeChunk(mapDataChunk, offsetCoord);
+
+                    if (IsOutOfRange(endlessMarchingCubeChunksDictionary[offsetCoord].transform.position))
+                    {
+                        endlessMarchingCubeChunksDictionary[offsetCoord].gameObject.SetActive(false);
+                    }
+
+                    c++;
+                    if (c % chunksGeneratedPerFrame == 0)
+                    {
+                        yield return null;
+                    }
+                }
+            }
+
+        }
+
+        TurnOffChunksAroundPlayer();
+yield return null;
+    }
+    */
+//private bool MapDataExists(Dictionary<int[], float[,,]> dict, int[] offsetCoord)
+//{
+//    MyEqualityComparer eq = new MyEqualityComparer();
+//    foreach (KeyValuePair<int[], float[,,]> chunk in dict)
+//    {
+
+//        if (eq.Equals(chunk.Key, offsetCoord))
+//        {
+//            return true;
+//        }
+
+//    }
+//    return false;
+//}
